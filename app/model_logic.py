@@ -5,9 +5,15 @@ from sklearn.linear_model import LogisticRegression
 from catboost import CatBoostClassifier, Pool
 
 # Load CP Weights (only static input allowed)
-cp_weights = pd.read_excel("Individual Control Point Scores.xlsx")
-cp_weights["CP_Code"] = cp_weights["S. No"].apply(lambda x: f"CP_{int(x):02}")
-cp_score_dict = dict(zip(cp_weights["CP_Code"], cp_weights["Individual CP score"]))
+# Directly embed CP scores
+cp_score_dict = {
+    "CP_01": 83, "CP_02": 86, "CP_03": 78, "CP_04": 81, "CP_07": 84, "CP_08": 80,
+    "CP_09": 76, "CP_10": 79, "CP_11": 82, "CP_13": 77, "CP_14": 85, "CP_15": 88,
+    "CP_16": 73, "CP_17": 75, "CP_18": 90, "CP_19": 60, "CP_20": 74, "CP_21": 69,
+    "CP_22": 66, "CP_23": 87, "CP_24": 78, "CP_26": 0,  "CP_27": 71, "CP_28": 67,
+    "CP_30": 72, "CP_31": 70, "CP_32": 72
+}
+
 
 
 def score_uploaded_file(df):
