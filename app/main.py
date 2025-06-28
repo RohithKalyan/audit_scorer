@@ -10,7 +10,7 @@ import uvicorn
 
 app = FastAPI()
 
-# ✅ Add this Pydantic model to define expected JSON input
+# ✅ Define expected request body
 class FileRequest(BaseModel):
     file_url: str
 
@@ -18,7 +18,7 @@ class FileRequest(BaseModel):
 def health_check():
     return {"status": "ok"}
 
-# ✅ Updated to return only top 3 rows with specific 4 columns
+# ✅ Prediction endpoint: now returns top 50 rows with all columns
 @app.post("/predict/")
 async def predict(request_data: FileRequest):
     try:
@@ -38,28 +38,21 @@ async def predict(request_data: FileRequest):
         if missing:
             return JSONResponse(status_code=400, content={"error": f"Missing required columns: {missing}"})
 
-        # Score
+        # Score the uploaded file
         result_df = score_uploaded_file(df)
 
-        # ✅ Only keep top 3 rows and required columns
-        top3 = result_df.head(3)
+        # ✅ Keep top 50 rows
+        top_50 = result_df.head(50)
 
-        # ✅ Build minimal response with 4 specific fields
-        output = {
-            "Rows": {
-                "Rows Row Date": top3["Date"].astype(str).tolist(),
-                "Rows Row Day": top3["Day"].astype(str).tolist(),
-                "Rows Row Source": top3["Source"].astype(str).tolist(),
-                "Rows Row Final Score": top3["Final_Score"].astype(str).tolist()
-            }
-        }
+        # ✅ Build output dynamically for all columns
+        output = {f"Rows Row {col}": top_50[col].astype(str).tolist() for col in top_50.columns}
 
-        return JSONResponse(content=output)
+        return JSONResponse(content={"Rows": output})
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
-# ✅ Ensure Render-compatible port binding
+# ✅ Render-compatible port binding
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
