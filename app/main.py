@@ -18,7 +18,7 @@ class FileRequest(BaseModel):
 def health_check():
     return {"status": "ok"}
 
-# ✅ Update this to use Pydantic model — clean Swagger docs + JSON body
+# ✅ Updated to return only top 3 rows with specific 4 columns
 @app.post("/predict/")
 async def predict(request_data: FileRequest):
     try:
@@ -40,9 +40,21 @@ async def predict(request_data: FileRequest):
 
         # Score
         result_df = score_uploaded_file(df)
-        result = result_df.head(50).to_dict(orient="records")
 
-        return {"results": result}
+        # ✅ Only keep top 3 rows and required columns
+        top3 = result_df.head(3)
+
+        # ✅ Build minimal response with 4 specific fields
+        output = {
+            "Rows": {
+                "Rows Row Date": top3["Date"].astype(str).tolist(),
+                "Rows Row Day": top3["Day"].astype(str).tolist(),
+                "Rows Row Source": top3["Source"].astype(str).tolist(),
+                "Rows Row Final Score": top3["Final_Score"].astype(str).tolist()
+            }
+        }
+
+        return JSONResponse(content=output)
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
