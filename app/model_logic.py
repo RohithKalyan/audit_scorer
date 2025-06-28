@@ -5,7 +5,6 @@ from sklearn.linear_model import LogisticRegression
 from catboost import CatBoostClassifier, Pool
 
 # Load CP Weights (only static input allowed)
-# Directly embed CP scores
 cp_score_dict = {
     "CP_01": 83, "CP_02": 86, "CP_03": 78, "CP_04": 81, "CP_07": 84, "CP_08": 80,
     "CP_09": 76, "CP_10": 79, "CP_11": 82, "CP_13": 77, "CP_14": 85, "CP_15": 88,
@@ -14,11 +13,8 @@ cp_score_dict = {
     "CP_30": 72, "CP_31": 70, "CP_32": 72
 }
 
-
-
 def score_uploaded_file(df):
     df = df.copy()
-
 
     # === Step 1: CONTROL POINTS ===
     desc_col = 'Description'
@@ -142,4 +138,10 @@ def score_uploaded_file(df):
     # === Step 5: Final Score ===
     df["Final_Score"] = (0.6 * df["CP_Score"] + 0.4 * df["Model_Score"]).round(4)
 
-    return df[["Date", "Triggered_CPs", "CP_Score", "Line Desc", "narration_risk_score", "Model_Score", "Final_Score"]]
+    # === Step 6: Output Columns in Desired Order ===
+    final_cols = [
+        "Date", "Day", "Source", "Description", "Reference", "Debit", "Credit", "Net", "Running Balance",
+        "Tax", "Tax Rate", "Tax Rate Name", "GL Account Category", "Month", "Weekday",
+        "Triggered_CPs", "CP_Score", "Model_Score", "Final_Score"
+    ]
+    return df[[col for col in final_cols if col in df.columns]]
