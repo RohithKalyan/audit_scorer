@@ -42,11 +42,11 @@ async def predict(request_data: FileRequest):
         # Score the uploaded file
         result_df = score_uploaded_file(df)
 
-        # ✅ Keep top 50 rows
-        top_50 = result_df.head(50)
+        # ✅ Keep top 5000 rows
+        top_5000 = result_df.head(5000)
 
         # ✅ Build output dynamically for all columns
-        output = {f"Rows Row {col}": top_50[col].astype(str).tolist() for col in top_50.columns}
+        output = {f"Rows Row {col}": top_5000[col].astype(str).tolist() for col in top_5000.columns}
 
         return JSONResponse(content={"Rows": output})
 
