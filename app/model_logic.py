@@ -114,10 +114,10 @@ def score_uploaded_file(raw_df):
         return pd.Series({"Triggered_CPs": ", ".join(triggered), "CP_Score": round(score, 4)})
     df = df.join(df.apply(compute_cp_scores, axis=1))
 
-    # === STEP C: Narration Risk Placeholder ===
+    # === STEP C: Narration Risk Score (placeholder only) ===
     df["narration_risk_score"] = 0.0
 
-    # === STEP D: CatBoost Scoring ===
+    # === STEP D: CatBoost Scoring (with text feature explicitly marked) ===
     expected_features = cb_model.feature_names_
     for col in expected_features:
         if col not in df.columns:
@@ -129,7 +129,8 @@ def score_uploaded_file(raw_df):
             inference_df[col] = inference_df[col].fillna("MISSING").astype(str)
 
     cat_features = [col for col in expected_features if inference_df[col].dtype == "object"]
-    test_pool = Pool(data=inference_df, cat_features=cat_features)
+    text_features = ["Description"]
+    test_pool = Pool(data=inference_df, cat_features=cat_features, text_features=text_features)
     df["Model_Score"] = cb_model.predict_proba(test_pool)[:, 1]
 
     # === STEP E: Final Score ===
