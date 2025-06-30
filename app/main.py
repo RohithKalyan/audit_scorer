@@ -19,7 +19,7 @@ class FileRequest(BaseModel):
 def health_check():
     return {"status": "ok"}
 
-# ✅ Prediction endpoint: now returns top 50 rows with all columns
+# ✅ Prediction endpoint: now returns top 5000 rows with all columns
 @app.post("/predict/")
 async def predict(request_data: FileRequest):
     try:
@@ -45,17 +45,22 @@ async def predict(request_data: FileRequest):
         # ✅ Keep top 5000 rows
         top_5000 = result_df.head(5000)
 
-        # ✅ Build output dynamically for all columns
-        output = {f"Rows Row {col}": top_5000[col].astype(str).tolist() for col in top_5000.columns}
+        # ✅ Fix: Prevent Zapier from splitting Triggered_CPs by quoting the field
+        output = {
+            f"Rows Row {col}": (
+                top_5000[col].apply(lambda x: f'"{x}"' if col == "Triggered_CPs" else str(x)).tolist()
+                if col == "Triggered_CPs" else top_5000[col].astype(str).tolist()
+            )
+            for col in top_5000.columns
+        }
 
         return JSONResponse(content={"Rows": output})
 
     except Exception as e:
-           # ✅ Add traceback logging
+        # ✅ Add traceback logging
         traceback_str = traceback.format_exc()
-        print("❌ ERROR TRACEBACK:\n", traceback_str)  # <-- This prints to Render logs
+        print("❌ ERROR TRACEBACK:\n", traceback_str)
 
-        # ✅ Return the error message to Zapier (or test UI)
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 # ✅ Render-compatible port binding
