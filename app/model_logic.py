@@ -14,14 +14,13 @@ cp_score_dict = {
     "CP_30": 72, "CP_31": 70, "CP_32": 72
 }
 
-# === Load Pretrained Models ===
+# Load models
 model_dir = os.path.join(os.path.dirname(__file__), "..", "models")
 cb_model = CatBoostClassifier()
 cb_model.load_model(os.path.join(model_dir, "catboost_model.cbm"))
 tfidf = joblib.load(os.path.join(model_dir, "tfidf_vectorizer.pkl"))
 logreg = joblib.load(os.path.join(model_dir, "narration_classifier.pkl"))
 
-# === MAIN FUNCTION ===
 def score_uploaded_file(raw_df):
     df = raw_df.copy()
 
@@ -103,7 +102,7 @@ def score_uploaded_file(raw_df):
     df.drop(columns="Month_CP31", inplace=True)
     df["CP_32"] = (df[net_col] == 0).astype(int)
 
-    # === STEP B: CP Scoring ===
+    # === STEP B: CP Score ===
     valid_cps = [f"CP_{i:02}" for i in range(1, 33) if i not in [5, 6, 12, 25]]
     def compute_cp_scores(row):
         triggered = []
@@ -124,21 +123,14 @@ def score_uploaded_file(raw_df):
     except:
         df["narration_risk_score"] = 0.0
 
-    # === STEP D: CatBoost Model Score ===
-    if "Document Number" not in df.columns:
-        df["Document Number"] = "MISSING"
-
-    exclude_cols = ["S. No", "Risk Level", "Risk"] + valid_cps
-    features = [col for col in df.columns if col not in exclude_cols]
-    cat_cols = [col for col in features if df[col].dtype == "object"]
-    num_cols = [col for col in features if col not in cat_cols]
-
-    for col in cat_cols:
-        df[col] = df[col].fillna("MISSING").astype(str)
-    for col in num_cols:
-        df[col] = df[col].fillna(0)
-
-    test_pool = Pool(data=df[cat_cols + num_cols], cat_features=cat_cols)
+    # === STEP D: CatBoost Scoring — bulletproof logic ===
+    expected_features = cb_model.feature_names_
+    for col in expected_features:
+        if col not in df.columns:
+            df[col] = "MISSING" if col in df.select_dtypes(include="object").columns else 0
+    inference_df = df[expected_features]
+    cat_features = [col for col in expected_features if inference_df[col].dtype == "object"]
+    test_pool = Pool(data=inference_df, cat_features=cat_features)
     df["Model_Score"] = cb_model.predict_proba(test_pool)[:, 1]
 
     # === STEP E: Final Score ===
