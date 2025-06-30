@@ -14,12 +14,10 @@ cp_score_dict = {
     "CP_30": 72, "CP_31": 70, "CP_32": 72
 }
 
-
 # === Load Pretrained Models ===
 model_dir = os.path.join(os.path.dirname(__file__), "..", "models")
 cb_model = CatBoostClassifier()
 cb_model.load_model(os.path.join(model_dir, "catboost_model.cbm"))
-
 tfidf = joblib.load(os.path.join(model_dir, "tfidf_vectorizer.pkl"))
 logreg = joblib.load(os.path.join(model_dir, "narration_classifier.pkl"))
 
@@ -127,6 +125,9 @@ def score_uploaded_file(raw_df):
         df["narration_risk_score"] = 0.0
 
     # === STEP D: CatBoost Model Score ===
+    if "Document Number" not in df.columns:
+        df["Document Number"] = "MISSING"
+
     exclude_cols = ["S. No", "Risk Level", "Risk"] + valid_cps
     features = [col for col in df.columns if col not in exclude_cols]
     cat_cols = [col for col in features if df[col].dtype == "object"]
