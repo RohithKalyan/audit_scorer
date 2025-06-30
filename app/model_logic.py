@@ -1,11 +1,10 @@
 import pandas as pd
 import numpy as np
 import os
-import joblib
 from datetime import datetime
 from catboost import CatBoostClassifier, Pool
 
-# Load CP Weights (only static input allowed)
+# === Load CP Weights ===
 cp_score_dict = {
     "CP_01": 83, "CP_02": 86, "CP_03": 78, "CP_04": 81, "CP_07": 84, "CP_08": 80,
     "CP_09": 76, "CP_10": 79, "CP_11": 82, "CP_13": 77, "CP_14": 85, "CP_15": 88,
@@ -14,17 +13,16 @@ cp_score_dict = {
     "CP_30": 72, "CP_31": 70, "CP_32": 72
 }
 
-# Load models
+# === Load CatBoost model ===
 model_dir = os.path.join(os.path.dirname(__file__), "..", "models")
 cb_model = CatBoostClassifier()
-cb_model.load_model(os.path.join(model_dir, "catboost_model.cbm"))
-tfidf = joblib.load(os.path.join(model_dir, "tfidf_vectorizer.pkl"))
-logreg = joblib.load(os.path.join(model_dir, "narration_classifier.pkl"))
+cb_model.load_model(os.path.join(model_dir, "catboost_model_fixed.cbm"))
 
+# === Scoring Function ===
 def score_uploaded_file(raw_df):
     df = raw_df.copy()
 
-    # === STEP A: CONTROL POINT LOGIC ===
+    # === STEP A: CONTROL POINTS ===
     desc_col = 'Description'
     ref_col = 'Reference'
     net_col = 'Net'
@@ -102,7 +100,7 @@ def score_uploaded_file(raw_df):
     df.drop(columns="Month_CP31", inplace=True)
     df["CP_32"] = (df[net_col] == 0).astype(int)
 
-    # === STEP B: CP Score ===
+    # === STEP B: Compute CP Score ===
     valid_cps = [f"CP_{i:02}" for i in range(1, 33) if i not in [5, 6, 12, 25]]
     def compute_cp_scores(row):
         triggered = []
@@ -116,23 +114,25 @@ def score_uploaded_file(raw_df):
         return pd.Series({"Triggered_CPs": ", ".join(triggered), "CP_Score": round(score, 4)})
     df = df.join(df.apply(compute_cp_scores, axis=1))
 
-    # === STEP C: Narration Risk ===
-    df["Line Desc"] = df["Description"].fillna("")
-    try:
-        df["narration_risk_score"] = logreg.predict_proba(tfidf.transform(df["Line Desc"]))[:, 1]
-    except:
-        df["narration_risk_score"] = 0.0
+    # === STEP C: Narration Risk Placeholder ===
+    df["narration_risk_score"] = 0.0
 
-    # === STEP D: CatBoost Scoring — bulletproof logic ===
+    # === STEP D: CatBoost Scoring ===
     expected_features = cb_model.feature_names_
     for col in expected_features:
         if col not in df.columns:
-            df[col] = "MISSING" if col in df.select_dtypes(include="object").columns else 0
-    inference_df = df[expected_features]
+            df[col] = "MISSING" if col in ["Day", "Source", "Reference", "Tax Rate", "Tax Rate Name", "GL Account Category", "Description"] else 0.0
+
+    inference_df = df[expected_features].copy()
+    for col in inference_df.columns:
+        if inference_df[col].dtype == object:
+            inference_df[col] = inference_df[col].fillna("MISSING").astype(str)
+
     cat_features = [col for col in expected_features if inference_df[col].dtype == "object"]
     test_pool = Pool(data=inference_df, cat_features=cat_features)
     df["Model_Score"] = cb_model.predict_proba(test_pool)[:, 1]
 
     # === STEP E: Final Score ===
     df["Final_Score"] = (0.6 * df["CP_Score"] + 0.4 * df["Model_Score"]).round(4)
+
     return df
