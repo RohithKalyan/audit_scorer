@@ -1,7 +1,8 @@
 import pandas as pd
 import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
+import os
+import joblib
+from datetime import datetime
 from catboost import CatBoostClassifier, Pool
 
 # Load CP Weights (only static input allowed)
@@ -9,19 +10,32 @@ cp_score_dict = {
     "CP_01": 83, "CP_02": 86, "CP_03": 78, "CP_04": 81, "CP_07": 84, "CP_08": 80,
     "CP_09": 76, "CP_10": 79, "CP_11": 82, "CP_13": 77, "CP_14": 85, "CP_15": 88,
     "CP_16": 73, "CP_17": 75, "CP_18": 90, "CP_19": 60, "CP_20": 74, "CP_21": 69,
-    "CP_22": 66, "CP_23": 87, "CP_24": 78, "CP_26": 0,  "CP_27": 71, "CP_28": 67,
+    "CP_22": 66, "CP_23": 87, "CP_24": 78, "CP_26": 0, "CP_27": 71, "CP_28": 67,
     "CP_30": 72, "CP_31": 70, "CP_32": 72
 }
 
-def score_uploaded_file(df):
-    df = df.copy()
 
-    # === Step 1: CONTROL POINTS ===
+# === Load Pretrained Models ===
+model_dir = os.path.join(os.path.dirname(__file__), "..", "models")
+cb_model = CatBoostClassifier()
+cb_model.load_model(os.path.join(model_dir, "catboost_model.cbm"))
+
+tfidf = joblib.load(os.path.join(model_dir, "tfidf_vectorizer.pkl"))
+logreg = joblib.load(os.path.join(model_dir, "narration_classifier.pkl"))
+
+# === MAIN FUNCTION ===
+def score_uploaded_file(raw_df):
+    df = raw_df.copy()
+
+    # === STEP A: CONTROL POINT LOGIC ===
     desc_col = 'Description'
     ref_col = 'Reference'
     net_col = 'Net'
     date_col = 'Date'
+    debit_col = 'Debit'
+    credit_col = 'Credit'
     acc_cat_col = 'GL Account Category'
+    source_col = 'Source'
 
     keywords = ['fraud','bribe','kickback','suspicious','fake','dummy','gift','prize','token','free','reward','favour']
     df["CP_01"] = df[desc_col].fillna("").str.lower().apply(lambda x: int(any(k in x for k in keywords)))
@@ -39,7 +53,8 @@ def score_uploaded_file(df):
         df[desc_col].astype(str).str.lower().str.contains('cash', na=False)
     ).astype(int)
     df["CP_10"] = (df[net_col].abs() > 2 * df[net_col].std()).astype(int)
-    outlier_thresh = df[net_col].abs().mean() + 3 * df[net_col].abs().std()
+    mean_net = df[net_col].abs().mean()
+    outlier_thresh = mean_net + 3 * df[net_col].std()
     df["CP_11"] = (df[net_col].abs() > outlier_thresh).astype(int)
     related_terms = ['related','subsidiary','affiliate','group company','holding']
     df["CP_14"] = df[desc_col].fillna("").str.lower().apply(lambda x: int(any(k in x for k in related_terms)))
@@ -55,10 +70,10 @@ def score_uploaded_file(df):
     parsed_dates = pd.to_datetime(df[date_col], errors='coerce', dayfirst=True)
     df["CP_21"] = (parsed_dates == parsed_dates.max()).astype(int)
     df["CP_22"] = (parsed_dates == parsed_dates.min()).astype(int)
-    complex_terms = ['derivative','spv','structured','note','swap']
+    terms = ['derivative','spv','structured','note','swap']
     df["CP_23"] = (
-        df[desc_col].astype(str).str.lower().apply(lambda x: int(any(t in x for t in complex_terms))) |
-        df[acc_cat_col].astype(str).str.lower().apply(lambda x: int(any(t in x for t in complex_terms)))
+        df[desc_col].astype(str).str.lower().apply(lambda x: int(any(t in x for t in terms))) |
+        df[acc_cat_col].astype(str).str.lower().apply(lambda x: int(any(t in x for t in terms)))
     ).astype(int)
     seqs = {'123','234','345','456','567','678','789','890','321','432','543','654','765','876','987','098'}
     repeats = {str(i)*3 for i in range(10)}
@@ -90,7 +105,7 @@ def score_uploaded_file(df):
     df.drop(columns="Month_CP31", inplace=True)
     df["CP_32"] = (df[net_col] == 0).astype(int)
 
-    # === Step 2: CP Score Calculation ===
+    # === STEP B: CP Scoring ===
     valid_cps = [f"CP_{i:02}" for i in range(1, 33) if i not in [5, 6, 12, 25]]
     def compute_cp_scores(row):
         triggered = []
@@ -104,44 +119,27 @@ def score_uploaded_file(df):
         return pd.Series({"Triggered_CPs": ", ".join(triggered), "CP_Score": round(score, 4)})
     df = df.join(df.apply(compute_cp_scores, axis=1))
 
-    # === Step 3: Narration Risk Model (TF-IDF) ===
-    df["Line Desc"] = df[desc_col].fillna("")
-    y_train = df["CP_01"]
-    if y_train.nunique() >= 2:
-        tfidf = TfidfVectorizer(max_features=200)
-        X_text = tfidf.fit_transform(df["Line Desc"])
-        logreg = LogisticRegression(class_weight='balanced', max_iter=1000)
-        logreg.fit(X_text, y_train)
+    # === STEP C: Narration Risk ===
+    df["Line Desc"] = df["Description"].fillna("")
+    try:
         df["narration_risk_score"] = logreg.predict_proba(tfidf.transform(df["Line Desc"]))[:, 1]
-    else:
+    except:
         df["narration_risk_score"] = 0.0
 
-    # === Step 4: CatBoost Model ===
-    labels = (df["CP_Score"] > 0.6).astype(int)
-    exclude_cols = valid_cps + [
-        "S. No", "Risk Level", "Risk",
-        "Line Desc", "narration_risk_score",
-        "Triggered_CPs", "CP_Score", "Model_Score", "Final_Score"
-    ]
+    # === STEP D: CatBoost Model Score ===
+    exclude_cols = ["S. No", "Risk Level", "Risk"] + valid_cps
     features = [col for col in df.columns if col not in exclude_cols]
     cat_cols = [col for col in features if df[col].dtype == "object"]
     num_cols = [col for col in features if col not in cat_cols]
+
     for col in cat_cols:
         df[col] = df[col].fillna("MISSING").astype(str)
     for col in num_cols:
         df[col] = df[col].fillna(0)
-    train_pool = Pool(data=df[cat_cols + num_cols], label=labels, cat_features=cat_cols)
-    cb_model = CatBoostClassifier(iterations=300, learning_rate=0.05, depth=6, class_weights=[1, 3], verbose=0)
-    cb_model.fit(train_pool)
-    df["Model_Score"] = cb_model.predict_proba(train_pool)[:, 1]
 
-    # === Step 5: Final Score ===
+    test_pool = Pool(data=df[cat_cols + num_cols], cat_features=cat_cols)
+    df["Model_Score"] = cb_model.predict_proba(test_pool)[:, 1]
+
+    # === STEP E: Final Score ===
     df["Final_Score"] = (0.6 * df["CP_Score"] + 0.4 * df["Model_Score"]).round(4)
-
-    # === Step 6: Output Columns in Desired Order ===
-    final_cols = [
-        "Date", "Day", "Source", "Description", "Reference", "Debit", "Credit", "Net", "Running Balance",
-        "Tax", "Tax Rate", "Tax Rate Name", "GL Account Category", "Month", "Weekday",
-        "Triggered_CPs", "CP_Score", "Model_Score", "Final_Score"
-    ]
-    return df[[col for col in final_cols if col in df.columns]]
+    return df
