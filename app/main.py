@@ -7,6 +7,7 @@ from io import StringIO
 from app.model_logic import score_uploaded_file
 import os
 import uvicorn
+import traceback  # ✅ New line added
 
 app = FastAPI()
 
@@ -50,6 +51,11 @@ async def predict(request_data: FileRequest):
         return JSONResponse(content={"Rows": output})
 
     except Exception as e:
+           # ✅ Add traceback logging
+        traceback_str = traceback.format_exc()
+        print("❌ ERROR TRACEBACK:\n", traceback_str)  # <-- This prints to Render logs
+
+        # ✅ Return the error message to Zapier (or test UI)
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 # ✅ Render-compatible port binding
