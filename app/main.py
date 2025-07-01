@@ -45,11 +45,13 @@ async def predict(request_data: FileRequest):
         # ✅ Step 4: Limit to top 5000 rows
         top_5000 = result_df.head(5000)
 
-        # ✅ Step 5: Special case: If column is "Triggered_CPs", send top-level field
-        if "Triggered_CPs" in top_5000.columns:
-            triggered_list = top_5000["Triggered_CPs"].astype(str).tolist()
-            return JSONResponse(content={"Triggered_CPs": triggered_list})
+        # ✅ Step 5: Build row-wise output
+        output = {
+            f"Rows Row {col}": top_5000[col].astype(str).tolist()
+            for col in top_5000.columns
+        }
 
+        return JSONResponse(content={"Rows": output})
         # ✅ Step 6: Else return as Rows Row style
         output = {
             f"Rows Row {col}": top_5000[col].astype(str).tolist()
