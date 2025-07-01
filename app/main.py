@@ -52,13 +52,6 @@ async def predict(request_data: FileRequest):
         }
 
         return JSONResponse(content={"Rows": output})
-        # ✅ Step 6: Else return as Rows Row style
-        output = {
-            f"Rows Row {col}": top_5000[col].astype(str).tolist()
-            for col in top_5000.columns
-        }
-
-        return JSONResponse(content={"Rows": output})
 
     except Exception as e:
         traceback_str = traceback.format_exc()
