@@ -111,8 +111,10 @@ def score_uploaded_file(raw_df):
                 triggered.append(f"{cp} ({score})")
                 cp_probs.append(1 - score / 100)
         score = 1 - np.prod(cp_probs) if cp_probs else 0
-        return pd.Series({"Triggered_CPs": ", ".join(triggered), "CP_Score": round(score, 4)})
+        return pd.Series({"Triggered_CPs_List": triggered, "CP_Score": round(score, 4)})
+
     df = df.join(df.apply(compute_cp_scores, axis=1))
+    df["Triggered_CPs"] = df["Triggered_CPs_List"].apply(lambda x: ", ".join(x) if x else "")
 
     # === STEP C: Narration Risk Score (placeholder only) ===
     df["narration_risk_score"] = 0.0
@@ -136,4 +138,10 @@ def score_uploaded_file(raw_df):
     # === STEP E: Final Score ===
     df["Final_Score"] = (0.6 * df["CP_Score"] + 0.4 * df["Model_Score"]).round(4)
 
-    return df
+    # === Final output: return only relevant columns ===
+    output_cols = [
+        "Date", "Day", "Source", "Description", "Reference", "Debit", "Credit", "Net", "Running Balance",
+        "Tax", "Tax Rate", "Tax Rate Name", "GL Account Category", "Month", "Weekday",
+        "Triggered_CPs", "CP_Score", "Model_Score", "Final_Score"
+    ]
+    return df[output_cols]
