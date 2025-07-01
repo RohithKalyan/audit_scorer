@@ -45,7 +45,12 @@ async def predict(request_data: FileRequest):
         # ✅ Step 4: Limit to top 5000 rows
         top_5000 = result_df.head(5000)
 
-        # ✅ Step 5: Build row-wise output
+        # ✅ Step 5: Special case: If column is "Triggered_CPs", send top-level field
+        if "Triggered_CPs" in top_5000.columns:
+            triggered_list = top_5000["Triggered_CPs"].astype(str).tolist()
+            return JSONResponse(content={"Triggered_CPs": triggered_list})
+
+        # ✅ Step 6: Else return as Rows Row style
         output = {
             f"Rows Row {col}": top_5000[col].astype(str).tolist()
             for col in top_5000.columns
@@ -62,26 +67,3 @@ async def predict(request_data: FileRequest):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-from fastapi.responses import JSONResponse
-
-@app.post("/test-structure")
-def test_structure():
-    triggered_cps = [
-        "", "", "", "",                      # rows 1–4
-        "CP_17 (75)", "", "",                # rows 5–7
-        "CP_17 (75)", "CP_17 (75)",          # rows 8–9
-        "CP_17 (75)", "CP_17 (75)",          # rows 10–11
-        "CP_17 (75)", "CP_17 (75)",          # rows 12–13
-        "CP_17 (75)", "CP_17 (75)",          # rows 14–15
-        "CP_17 (75)", "CP_17 (75)",          # rows 16–17
-        "CP_17 (75), CP_24 (78)",            # row 18
-        "CP_17 (75)",                        # row 19
-        "CP_17 (75), CP_24 (78)",            # row 20
-        "CP_17 (75)", "CP_17 (75)",          # rows 21–22
-        "",                                  # row 23
-        "CP_17 (75)"                         # row 24
-    ]
-
-    return JSONResponse(content={
-        "Triggered_CPs": triggered_cps
-    })
