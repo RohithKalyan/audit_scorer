@@ -58,7 +58,12 @@ async def predict(request_data: FileRequest):
         print("❌ ERROR TRACEBACK:\n", traceback_str)
         return JSONResponse(status_code=500, content={"error": str(e)})
 
-# ✅ Test endpoint to validate Zapier list structure
+# ✅ Render-compatible port binding
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
+from fastapi.responses import JSONResponse
+
 @app.post("/test-structure")
 def test_structure():
     triggered_cps = [
@@ -76,9 +81,7 @@ def test_structure():
         "",                                  # row 23
         "CP_17 (75)"                         # row 24
     ]
-    return JSONResponse(content={ "Triggered_CPs": triggered_cps })
 
-# ✅ Render-compatible port binding
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    return JSONResponse(content={
+        "Triggered_CPs": triggered_cps
+    })
