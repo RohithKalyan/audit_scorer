@@ -62,3 +62,26 @@ async def predict(request_data: FileRequest):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+from fastapi.responses import JSONResponse
+
+@app.post("/test-structure")
+def test_structure():
+    triggered_cps = [
+        "", "", "", "",                      # rows 1–4
+        "CP_17 (75)", "", "",                # rows 5–7
+        "CP_17 (75)", "CP_17 (75)",          # rows 8–9
+        "CP_17 (75)", "CP_17 (75)",          # rows 10–11
+        "CP_17 (75)", "CP_17 (75)",          # rows 12–13
+        "CP_17 (75)", "CP_17 (75)",          # rows 14–15
+        "CP_17 (75)", "CP_17 (75)",          # rows 16–17
+        "CP_17 (75), CP_24 (78)",            # row 18
+        "CP_17 (75)",                        # row 19
+        "CP_17 (75), CP_24 (78)",            # row 20
+        "CP_17 (75)", "CP_17 (75)",          # rows 21–22
+        "",                                  # row 23
+        "CP_17 (75)"                         # row 24
+    ]
+
+    return JSONResponse(content={
+        "Triggered_CPs": triggered_cps
+    })
