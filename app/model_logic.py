@@ -18,11 +18,10 @@ model_dir = os.path.join(os.path.dirname(__file__), "..", "models")
 cb_model = CatBoostClassifier()
 cb_model.load_model(os.path.join(model_dir, "catboost_model_fixed.cbm"))
 
-# === Scoring Function ===
 def score_uploaded_file(raw_df):
     df = raw_df.copy()
 
-    # === STEP A: CONTROL POINTS ===
+    # === Control Points ===
     desc_col = 'Description'
     ref_col = 'Reference'
     net_col = 'Net'
@@ -100,29 +99,18 @@ def score_uploaded_file(raw_df):
     df.drop(columns="Month_CP31", inplace=True)
     df["CP_32"] = (df[net_col] == 0).astype(int)
 
-    # === STEP B: Compute CP Score ===
+    # === Step B: Get first triggered CP only ===
     valid_cps = [f"CP_{i:02}" for i in range(1, 33) if i not in [5, 6, 12, 25]]
-    def compute_cp_scores(row):
-        triggered = []
-        cp_probs = []
+    def get_first_triggered_cp(row):
         for cp in valid_cps:
             if row.get(cp, 0) == 1:
-                score = cp_score_dict.get(cp, 0)
-                triggered.append(f"{cp} ({score})")
-                cp_probs.append(1 - score / 100)
-        score = 1 - np.prod(cp_probs) if cp_probs else 0
-        return pd.Series({"Triggered_CPs_List": triggered, "CP_Score": round(score, 4)})
+                return f"{cp} ({cp_score_dict.get(cp, 0)})"
+        return ""
 
-    df = df.join(df.apply(compute_cp_scores, axis=1))
+    df["Triggered_CPs"] = df.apply(get_first_triggered_cp, axis=1)
+    df["CP_Score"] = df["Triggered_CPs"].str.extract(r"\((\d+)\)").fillna(0).astype(int)
 
-    # ✅ FINAL FIX applied here
-    df["Triggered_CPs"] = df["Triggered_CPs_List"].apply(lambda x: ", ".join(x) if x else "")
-    df["Triggered_CPs"] = df["Triggered_CPs"].fillna("").astype(str)
-
-    # === STEP C: Narration Risk Score (placeholder only) ===
-    df["narration_risk_score"] = 0.0
-
-    # === STEP D: CatBoost Scoring
+    # === Step C: Model Inference
     expected_features = cb_model.feature_names_
     for col in expected_features:
         if col not in df.columns:
@@ -138,7 +126,7 @@ def score_uploaded_file(raw_df):
     test_pool = Pool(data=inference_df, cat_features=cat_features, text_features=text_features)
     df["Model_Score"] = cb_model.predict_proba(test_pool)[:, 1]
 
-    # === STEP E: Final Score ===
+    # === Final Score
     df["Final_Score"] = (0.6 * df["CP_Score"] + 0.4 * df["Model_Score"]).round(4)
 
     output_cols = [
