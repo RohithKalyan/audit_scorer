@@ -114,12 +114,15 @@ def score_uploaded_file(raw_df):
         return pd.Series({"Triggered_CPs_List": triggered, "CP_Score": round(score, 4)})
 
     df = df.join(df.apply(compute_cp_scores, axis=1))
+
+    # ✅ FINAL FIX applied here
     df["Triggered_CPs"] = df["Triggered_CPs_List"].apply(lambda x: ", ".join(x) if x else "")
+    df["Triggered_CPs"] = df["Triggered_CPs"].fillna("").astype(str)
 
     # === STEP C: Narration Risk Score (placeholder only) ===
     df["narration_risk_score"] = 0.0
 
-    # === STEP D: CatBoost Scoring (with text feature explicitly marked) ===
+    # === STEP D: CatBoost Scoring
     expected_features = cb_model.feature_names_
     for col in expected_features:
         if col not in df.columns:
@@ -138,10 +141,10 @@ def score_uploaded_file(raw_df):
     # === STEP E: Final Score ===
     df["Final_Score"] = (0.6 * df["CP_Score"] + 0.4 * df["Model_Score"]).round(4)
 
-    # === Final output: return only relevant columns ===
     output_cols = [
         "Date", "Day", "Source", "Description", "Reference", "Debit", "Credit", "Net", "Running Balance",
         "Tax", "Tax Rate", "Tax Rate Name", "GL Account Category", "Month", "Weekday",
         "Triggered_CPs", "CP_Score", "Model_Score", "Final_Score"
     ]
+
     return df[output_cols]
